@@ -1,4 +1,5 @@
 import os
+
 from os.path import join, dirname
 from dotenv import load_dotenv
 
@@ -7,7 +8,7 @@ from flask_sslify import SSLify
 from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_restful import Api, abort
-
+from werkzeug.exceptions import HTTPException, NotFound
 
 try:
     from config import app_configuration
@@ -19,7 +20,6 @@ except ImportError:
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
-
 
 def create_flask_app(environment):
     app = Flask(__name__, instance_relative_config=True, static_folder=None, template_folder='./api/emails/templates')
@@ -40,8 +40,18 @@ def create_flask_app(environment):
     # initilize migration commands
     Migrate(app, models.db)
 
+    errors = {
+        'MethodNotAllowed': {
+            'data': {
+            },
+            'message': 'The method is not allowed for this requested URL.',
+            'error':'Method Not Allowed',
+            'status': 405
+        }
+    }
+
     # initilize api resources
-    api = Api(app)
+    api = Api(app, errors=errors)
 
     environment = os.getenv("FLASK_CONFIG")
 
@@ -63,6 +73,7 @@ def create_flask_app(environment):
     # handle default 404 exceptions with a custom response
     @app.errorhandler(404)
     def resource_not_found(exception):
+        app.logger.error(repr(exception))
         response = jsonify(dict(status='fail', data={
                     'error':'Not found', 'message':'The requested URL was'
                     ' not found on the server. If you entered the URL '
@@ -71,14 +82,31 @@ def create_flask_app(environment):
         response.status_code = 404
         return response
 
-    # handle default 500 exceptions with a custom response
+    # both error handlers below handle default 500 exceptions with a custom response
     @app.errorhandler(500)
     def internal_server_error(error):
-        response = jsonify(dict(status=error,error='Internal Server Error',
-                    message='The server encountered an internal error and was' 
-                    ' unable to complete your request.  Either the server is'
-                    ' overloaded or there is an error in the application'))
+        app.logger.error(repr(error))
+        response = jsonify(dict(
+            status='error',
+            data={
+                'error': 'Internal Server Error',
+                'message': 'The server encountered an internal error and was unable to complete your request.'
+            }
+        ))
         response.status_code = 500
+        return response
+
+    @app.errorhandler(Exception)
+    def unhandled_exception(error):
+        response = jsonify(dict(
+            status='error',
+            data={
+                'error': 'Unhandle Error',
+                'message': 'The server encountered an internal error and was unable to complete your request.'
+            }
+        ))
+        response.status_code = 500
+        app.logger.error(repr(error))
         return response
 
     return app

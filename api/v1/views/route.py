@@ -1,4 +1,4 @@
-from flask import request, jsonify, json, Response
+from flask import request, jsonify, json, Response, g
 from flask_restful import Resource
 
 from ...authentication.token import token_required
